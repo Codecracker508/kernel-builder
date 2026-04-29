@@ -11,39 +11,22 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Setup environment (fast + non-blocking)
+      - name: Setup environment
         run: |
-          sudo sed -i 's|http://archive.ubuntu.com|http://mirror.math.princeton.edu/pub/ubuntu|g' /etc/apt/sources.list
-
           sudo apt-get update -y -o Acquire::Retries=3
-
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            build-essential bc bison flex \
-            libssl-dev libelf-dev \
-            git zip wget cpio python3 \
-            llvm lld
-
-          echo "Setup done"
+            build-essential bc bison flex libssl-dev libelf-dev \
+            git zip wget cpio python3 llvm lld
 
       - name: Show branch
-        run: |
-          echo "Building branch: ${GITHUB_REF_NAME}"
+        run: echo "Building branch: ${GITHUB_REF_NAME}"
 
-      - name: Clone Clang 20
-        run: |
-          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
+      - name: Clone Clang
+        run: git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
 
-      - name: Clone Kernel Source
+      - name: Clone Kernel
         run: |
-          BRANCH="${GITHUB_REF_NAME}"
-
-          if git ls-remote --heads https://github.com/SM8250-Common/android_kernel_realme_sm8250 "$BRANCH" | grep -q "$BRANCH"; then
-            echo "Cloning matching branch: $BRANCH"
-            git clone --depth=1 -b "$BRANCH" https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
-          else
-            echo "Branch not found, using default"
-            git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
-          fi
+          git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
 
       - name: Build Kernel
         run: |
@@ -65,11 +48,9 @@ jobs:
           export LLVM=1
           export LLVM_IAS=1
 
-          export KBUILD_BUILD_USER="suresh"
-          export KBUILD_BUILD_HOST="github"
-
           rm -rf out
 
+          echo "=== CONFIG ==="
           make vendor/kona-perf_defconfig
 
           scripts/kconfig/merge_config.sh \
@@ -78,35 +59,39 @@ jobs:
 
           make olddefconfig
 
-          # disable camera via config
+          echo "=== APPLY FIXES ==="
+
+          # camera fix
           scripts/config --file .config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
           scripts/config --file .config --disable CONFIG_OPLUS_CAMERA || true
-          
-          make olddefconfig
-          
-          # 🔥 HARD remove broken camera tree
-          sed -i 's/techpack\/camera-oplus/# techpack\/camera-oplus/g' Makefile || true
-          sed -i 's/techpack\/camera-oplus/# techpack\/camera-oplus/g' Kbuild || true
-          
-          # also keep clk fix
+
+          # clk debug fix
           scripts/config --file .config --disable CONFIG_DEBUG_CLK || true
           scripts/config --file .config --disable CONFIG_COMMON_CLK_DEBUG || true
-          
+
           make olddefconfig
 
-          make -j$(nproc --all) 2> >(tee build.log >&2)
+          # hard remove camera tree (final guarantee)
+          sed -i 's/techpack\/camera-oplus/# techpack\/camera-oplus/g' Makefile || true
+          sed -i 's/techpack\/camera-oplus/# techpack\/camera-oplus/g' Kbuild || true
 
-          if [ ! -f "out/arch/arm64/boot/Image" ]; then
-            echo "Build failed"
-            cat build.log
-            exit 1
-          fi
+          echo "=== BUILD START ==="
+
+          make -j$(nproc --all) 2>&1 | tee build.log
+
+      - name: Extract Errors (copy this if build fails)
+        if: failure()
+        run: |
+          echo "========= ERROR SUMMARY ========="
+          grep -i -E "error:|fatal error:|undefined reference|No such file" kernel/build.log || true
+          echo "================================="
 
       - name: Clone AnyKernel3
-        run: |
-          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
+        if: success()
+        run: git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
 
       - name: Pack Kernel ZIP
+        if: success()
         run: |
           mkdir -p anykernel/kernels
           cp kernel/out/arch/arm64/boot/Image anykernel/kernels/
@@ -115,6 +100,7 @@ jobs:
           zip -r9 Kernel_spartan.zip ./* -x .git .gitignore
 
       - name: Prepare artifacts
+        if: success()
         run: |
           mkdir artifacts
           cp anykernel/*.zip artifacts/
@@ -123,6 +109,7 @@ jobs:
           cp kernel/out/arch/arm64/boot/dtb artifacts/ || true
 
       - name: Upload artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-${{ github.ref_name }}
