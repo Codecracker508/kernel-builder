@@ -1,0 +1,94 @@
+name: Build Realme GT Neo 3T Kernel (Non-KSU)
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            git curl wget zip unzip bc bison flex \
+            libssl-dev libelf-dev build-essential \
+            python3 cpio kmod
+
+      - name: Clone Clang 20
+        run: |
+          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git clang
+
+      - name: Clone AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 AnyKernel3
+
+      - name: Export Environment
+        run: |
+          echo "ARCH=arm64" >> $GITHUB_ENV
+          echo "SUBARCH=arm64" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_USER=CI" >> $GITHUB_ENV
+          echo "KBUILD_BUILD_HOST=GitHub" >> $GITHUB_ENV
+          echo "PATH=$PWD/clang/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Clean Output
+        run: |
+          rm -rf out
+          mkdir -p out
+
+      - name: Build Kernel (Non-KSU)
+        run: |
+          set -o pipefail
+
+          make O=out ARCH=arm64 vendor/kona-perf_defconfig 2>&1 | tee build.log
+
+          make -j$(nproc --all) \
+            O=out \
+            ARCH=arm64 \
+            CC=clang \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            2>&1 | tee -a build.log
+
+      - name: Verify Outputs
+        run: |
+          ls -lah out/arch/arm64/boot/ || true
+
+      - name: Copy to AnyKernel3
+        run: |
+          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || true
+          cp out/arch/arm64/boot/dtbo.img AnyKernel3/ 2>/dev/null || true
+          cp out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
+
+      - name: Create Flashable Zip
+        run: |
+          cd AnyKernel3
+          zip -r9 ../kernel.zip * -x .git README.md
+
+      - name: Upload Artifacts (Always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-build
+          path: |
+            out/arch/arm64/boot/Image*
+            out/arch/arm64/boot/dtbo.img
+            kernel.zip
+            build.log
+
+      - name: Upload Boot Image (if exists)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-image
+          path: |
+            out/arch/arm64/boot/boot.img
