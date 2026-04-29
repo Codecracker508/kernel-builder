@@ -43,11 +43,15 @@ jobs:
           rm -rf out
           mkdir -p out
 
+      - name: Debug Defconfig (sanity check)
+        run: |
+          ls arch/arm64/configs/vendor/ || true
+
       - name: Build Kernel (Non-KSU)
         run: |
           set -o pipefail
 
-          make O=out ARCH=arm64 vendor/kona-perf_defconfig 2>&1 | tee build.log
+          make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
 
           make -j$(nproc --all) \
             O=out \
