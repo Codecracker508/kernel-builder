@@ -66,10 +66,7 @@ jobs:
           fi
 
           if [ ! -f scripts/min-tool-version.sh ]; then
-            cat <<'EOF' > scripts/min-tool-version.sh
-            #!/bin/sh
-            exit 0
-            EOF
+            printf '#!/bin/sh\nexit 0\n' > scripts/min-tool-version.sh
             chmod +x scripts/min-tool-version.sh
           fi
 
