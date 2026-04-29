@@ -11,119 +11,107 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Setup environment
-        run: |
-          sudo apt-get update -y -o Acquire::Retries=3
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git zip wget cpio python3 llvm lld
+    - name: Clone Kernel Source
+      run: |
+        git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
 
-      - name: Show branch
-        run: |
-          echo "Building branch: ${GITHUB_REF_NAME}"
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          bc bison build-essential flex git \
+          libssl-dev libelf-dev lld llvm \
+          python3 python-is-python3 \
+          zip unzip cpio rsync curl \
+          gcc g++ \
+          binutils-aarch64-linux-gnu
 
-      - name: Clone Clang
-        run: |
-          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
+    - name: Clone Clang 20
+      run: |
+        git clone --depth=1 https://gitlab.com/provasishh/clang-20.git tc
 
-      - name: Clone Kernel Source (branch-aware)
-        run: |
-          BRANCH="${GITHUB_REF_NAME}"
-          if git ls-remote --heads https://github.com/SM8250-Common/android_kernel_realme_sm8250 "$BRANCH" | grep -q "$BRANCH"; then
-            echo "Using branch $BRANCH"
-            git clone --depth=1 -b "$BRANCH" https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
-          else
-            echo "Branch not found, using default"
-            git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
-          fi
+    - name: Build & Package Kernel
+      run: |
+        cd kernel
 
-      - name: Build Kernel
-        run: |
-          cd kernel
+        echo "Cloning AnyKernel"
+        git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 ../anykernel
 
-          export PATH="$HOME/tc/bin:$(llvm-config --bindir):$PATH"
+        DT=$(date +"%Y%m%d-%H%M")
+        config=vendor/kona-perf_defconfig
 
-          export ARCH=arm64
-          export O=out
+        CROSS_COMPILE=$(pwd)/../tc/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+        KERNEL_ARCH=arm64
+        KERNEL_OUT=$(pwd)/out
 
-          export CC=clang
-          export LD=ld.lld
-          export AR=llvm-ar
-          export NM=llvm-nm
-          export OBJCOPY=llvm-objcopy
-          export OBJDUMP=llvm-objdump
-          export STRIP=llvm-strip
+        export ARCH=${KERNEL_ARCH}
+        export O=${KERNEL_OUT}
+        export PATH="$(pwd)/../tc/bin:$(llvm-config --bindir):$PATH"
 
-          export LLVM=1
-          export LLVM_IAS=1
+        TARGET_KERNEL_MAKE_ENV="CC=clang"
 
-          export KBUILD_BUILD_USER="suresh"
-          export KBUILD_BUILD_HOST="github"
+        echo "=== CONFIG ==="
+        make O=${O} ${TARGET_KERNEL_MAKE_ENV} \
+          LLVM_IAS=1 \
+          ARCH=${ARCH} \
+          CROSS_COMPILE=${CROSS_COMPILE} \
+          vendor/kona-perf_defconfig
 
-          rm -rf out
+        make O=${O} olddefconfig
 
-          echo "=== CONFIG ==="
-          make vendor/kona-perf_defconfig
+        echo "=== APPLY FIXES ==="
 
-          scripts/kconfig/merge_config.sh \
-            -m arch/arm64/configs/vendor/kona-perf_defconfig \
-            arch/arm64/configs/vendor/oplus.config
+        # camera fix
+        scripts/config --file ${O}/.config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
+        scripts/config --file ${O}/.config --disable CONFIG_OPLUS_CAMERA || true
 
-          make olddefconfig
-          
-          # disable configs
-          scripts/config --file .config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
-          scripts/config --file .config --disable CONFIG_OPLUS_CAMERA || true
-          scripts/config --file .config --disable CONFIG_DEBUG_CLK || true
-          scripts/config --file .config --disable CONFIG_COMMON_CLK_DEBUG || true
-          
-          make olddefconfig
-          
-          # 🔥 remove broken modules
-          sed -i 's|techpack/camera-oplus|# techpack/camera-oplus|g' Makefile || true
-          sed -i 's|techpack/camera-oplus|# techpack/camera-oplus|g' Kbuild || true
-          
-          sed -i 's|techpack/display|# techpack/display|g' Makefile || true
-          sed -i 's|techpack/display|# techpack/display|g' Kbuild || true
-          
-          # build starts here
-          make -j$(nproc --all) 2>&1 | tee build.log
+        # clk debug fix
+        scripts/config --file ${O}/.config --disable CONFIG_DEBUG_CLK || true
+        scripts/config --file ${O}/.config --disable CONFIG_COMMON_CLK_DEBUG || true
 
-          if [ ! -f "out/arch/arm64/boot/Image" ]; then
-            echo "Build failed"
-            exit 1
-          fi
+        make O=${O} olddefconfig
 
-      - name: Show Errors (copy this)
-        if: failure()
-        run: |
-          echo "===== ERROR SUMMARY ====="
-          grep -i -E "error:|fatal error:|undefined reference|No such file" kernel/build.log || true
-          echo "========================="
+        # remove broken modules
+        sed -i 's|techpack/camera-oplus|# techpack/camera-oplus|g' Makefile || true
+        sed -i 's|techpack/camera-oplus|# techpack/camera-oplus|g' Kbuild || true
 
-      - name: Clone AnyKernel3
-        if: success()
-        run: |
-          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
+        sed -i 's|techpack/display|# techpack/display|g' Makefile || true
+        sed -i 's|techpack/display|# techpack/display|g' Kbuild || true
 
-      - name: Pack Kernel ZIP
-        if: success()
-        run: |
-          mkdir -p anykernel/kernels
-          cp kernel/out/arch/arm64/boot/Image anykernel/kernels/
-          cd anykernel
-          zip -r9 Kernel_spartan.zip ./* -x .git .gitignore
+        echo "=== BUILD START ==="
 
-      - name: Prepare artifacts
-        if: success()
-        run: |
-          mkdir artifacts
-          cp anykernel/*.zip artifacts/
-          cp kernel/out/arch/arm64/boot/Image artifacts/
-          cp kernel/out/arch/arm64/boot/dtbo.img artifacts/ || true
-          cp kernel/out/arch/arm64/boot/dtb artifacts/ || true
+        make O=${O} \
+          ARCH=${ARCH} \
+          CROSS_COMPILE=${CROSS_COMPILE} \
+          LLVM_IAS=1 \
+          ${TARGET_KERNEL_MAKE_ENV} \
+          -j$(nproc --all) 2>&1 | tee build.log
 
-      - name: Upload artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel-${{ github.ref_name }}
-          path: artifacts/*
+        if [ ! -f "out/arch/arm64/boot/Image" ]; then
+          echo "Build failed"
+          exit 1
+        fi
+
+        echo "=== PACK ==="
+
+        cd ../anykernel
+        rm -f *.zip
+        cp ../kernel/out/arch/arm64/boot/Image .
+        cp ../kernel/out/arch/arm64/boot/dtbo.img . || true
+        cp ../kernel/out/arch/arm64/boot/dtb . || true
+
+        zip -r9 Spartan-Kernel-${DT}.zip *
+
+    - name: Show Errors
+      if: failure()
+      run: |
+        echo "==== ERROR SUMMARY ===="
+        grep -i -E "error:|fatal error:|undefined reference|No such file" kernel/build.log || true
+        echo "======================"
+
+    - name: Upload Kernel ZIP
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Spartan-Kernel
+        path: anykernel/*.zip
