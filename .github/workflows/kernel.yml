@@ -16,26 +16,22 @@ jobs:
           sudo apt update
           sudo apt install -y \
             git curl wget zip unzip bc bison flex \
-            libssl-dev libelf-dev build-essential \
-            python3 cpio kmod rsync
+            libssl-dev libelf-dev libncurses-dev \
+            build-essential python3 cpio kmod
 
-      - name: Clone Kernel Source
+      - name: Clone Kernel
         run: |
-          git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
+          git clone --depth=1 https://github.com/AxionAOSP-devices/android_kernel_realme_sm8250.git kernel
 
-      - name: Download AOSP Clang
+      - name: Clone Clang
         run: |
-          mkdir clang
-          cd clang
-          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r450784d.tar.gz
-          tar -xzf clang-r450784d.tar.gz
-          rm clang-r450784d.tar.gz
+          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git clang
 
       - name: Clone AnyKernel3
         run: |
           git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 AnyKernel3
 
-      - name: Export Environment
+      - name: Set Environment
         run: |
           echo "ARCH=arm64" >> $GITHUB_ENV
           echo "SUBARCH=arm64" >> $GITHUB_ENV
@@ -48,9 +44,9 @@ jobs:
           cd kernel
           pwd
           ls
-          ls arch/arm64/configs/vendor/
+          ls arch/arm64/configs || true
 
-      - name: Prepare Output Directory
+      - name: Prepare Output
         run: |
           mkdir -p kernel/out
 
@@ -59,16 +55,13 @@ jobs:
           set -o pipefail
           cd kernel
 
-          # Load base defconfig
+          # Load defconfig
           make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
 
-          # Merge vendor config
-          cat arch/arm64/configs/vendor/oplus.config >> out/.config
-
-          # Resolve config dependencies
+          # Ensure config consistency
           make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
 
-          # Compile kernel
+          # Build kernel
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
@@ -80,22 +73,22 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             2>&1 | tee -a build.log
 
-      - name: Verify Outputs
+      - name: Verify Output
         run: |
           ls -lah kernel/out/arch/arm64/boot/ || true
 
       - name: Copy to AnyKernel3
         run: |
           cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || true
-          cp kernel/out/arch/arm64/boot/dtbo.img AnyKernel3/ 2>/dev/null || true
           cp kernel/out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
+          cp kernel/out/arch/arm64/boot/dtbo.img AnyKernel3/ 2>/dev/null || true
 
       - name: Create Flashable Zip
         run: |
           cd AnyKernel3
           zip -r9 ../kernel.zip * -x .git README.md
 
-      - name: Upload Artifacts (Always)
+      - name: Upload Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -105,11 +98,3 @@ jobs:
             kernel/out/arch/arm64/boot/dtbo.img
             kernel/build.log
             kernel.zip
-
-      - name: Upload Boot Image (if exists)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: boot-image
-          path: |
-            kernel/out/arch/arm64/boot/boot.img
