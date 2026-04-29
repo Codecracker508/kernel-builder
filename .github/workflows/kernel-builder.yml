@@ -64,7 +64,7 @@ jobs:
         make kona-perf_defconfig
 
         scripts/kconfig/merge_config.sh \
-          -m arch/arm64/configs/kona-perf_defconfig \
+          -m arch/arm64/configs/vendor/kona-perf_defconfig \
           arch/arm64/configs/vendor/oplus.config
 
         make olddefconfig
