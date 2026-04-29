@@ -24,23 +24,26 @@ jobs:
         run: echo "Building branch: $GITHUB_REF_NAME"
 
       - name: Clone Clang 20
-        run: |
-          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
+        run: git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
 
-      - name: Clone Kernel Source (same branch if exists)
+      - name: Clone Kernel Source (safe)
+        shell: bash
         run: |
-          BRANCH=$GITHUB_REF_NAME
+          set -e
+          BRANCH="$GITHUB_REF_NAME"
 
-          if git ls-remote --heads https://github.com/SM8250-Common/android_kernel_realme_sm8250 $BRANCH | grep $BRANCH; then
+          if git ls-remote --heads https://github.com/SM8250-Common/android_kernel_realme_sm8250 "$BRANCH" | grep -q "$BRANCH"; then
             echo "Cloning branch $BRANCH"
-            git clone --depth=1 -b $BRANCH https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
+            git clone --depth=1 -b "$BRANCH" https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
           else
             echo "Branch not found, using default"
             git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
           fi
 
       - name: Build Kernel
+        shell: bash
         run: |
+          set -e
           cd kernel
 
           export PATH="$HOME/tc/bin:$(llvm-config --bindir):$PATH"
@@ -64,11 +67,8 @@ jobs:
 
           rm -rf out
 
-          echo "Building with vendor/kona-perf + oplus config"
-
           make vendor/kona-perf_defconfig
 
-          # disable broken camera cleanly
           printf "%s\n" \
           "# CONFIG_SPECTRA_CAMERA_OPLUS is not set" \
           "# CONFIG_OPLUS_CAMERA is not set" \
@@ -80,18 +80,10 @@ jobs:
             disable_camera.config
 
           make olddefconfig
-
-          make -j$(nproc --all) 2> >(tee build.log >&2)
-
-          if [ ! -f "out/arch/arm64/boot/Image" ]; then
-            echo "Build failed"
-            cat build.log
-            exit 1
-          fi
+          make -j$(nproc --all)
 
       - name: Clone AnyKernel3
-        run: |
-          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
+        run: git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
 
       - name: Pack Kernel ZIP
         run: |
@@ -104,7 +96,6 @@ jobs:
       - name: Prepare artifacts
         run: |
           mkdir artifacts
-
           cp anykernel/*.zip artifacts/
           cp kernel/out/arch/arm64/boot/Image artifacts/
           cp kernel/out/arch/arm64/boot/dtbo.img artifacts/ || true
