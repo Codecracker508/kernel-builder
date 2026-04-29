@@ -31,9 +31,9 @@ jobs:
         run: |
           echo "Checking clang structure..."
           ls clang
-          ls clang/bin || true
+          ls clang/clang/bin || true
 
-          if [ ! -f clang/bin/clang ]; then
+          if [ ! -f clang/clang/bin/clang ]; then
             echo "clang binary missing!"
             exit 1
           fi
@@ -48,13 +48,6 @@ jobs:
           echo "SUBARCH=arm64" >> $GITHUB_ENV
           echo "KBUILD_BUILD_USER=CI" >> $GITHUB_ENV
           echo "KBUILD_BUILD_HOST=GitHub" >> $GITHUB_ENV
-
-      - name: Debug Kernel Tree
-        run: |
-          cd kernel
-          pwd
-          ls
-          ls arch/arm64/configs || true
 
       - name: Prepare Output
         run: |
@@ -75,13 +68,14 @@ jobs:
             exit 1
           fi
 
-      - name: Build Kernel (Force Clang-20)
+      - name: Build Kernel (Force Correct Clang)
         run: |
           set -o pipefail
           cd kernel
 
-          CLANG=$PWD/../clang/bin
+          CLANG=$PWD/../clang/clang/bin
 
+          echo "Using clang from: $CLANG"
           $CLANG/clang --version
 
           make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
