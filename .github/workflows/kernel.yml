@@ -17,15 +17,19 @@ jobs:
           sudo apt install -y \
             git curl wget zip unzip bc bison flex \
             libssl-dev libelf-dev libncurses-dev \
-            build-essential python3 cpio kmod
+            build-essential python3 cpio kmod zstd
 
       - name: Clone Kernel
         run: |
           git clone --depth=1 https://github.com/AxionAOSP-devices/android_kernel_realme_sm8250.git kernel
 
-      - name: Clone Clang
+      - name: Download Neutron Clang
         run: |
-          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git clang
+          mkdir clang
+          cd clang
+          wget https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/11032024/neutron-clang-17.0.0.tar.zst
+          tar --use-compress-program=unzstd -xvf neutron-clang-17.0.0.tar.zst
+          rm *.tar.zst
 
       - name: Clone AnyKernel3
         run: |
@@ -55,18 +59,20 @@ jobs:
           set -o pipefail
           cd kernel
 
-          # Load defconfig
           make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
 
-          # Ensure config consistency
           make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
 
-          # Build kernel
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
             CC=clang \
             LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJDUMP=llvm-objdump \
+            OBJCOPY=llvm-objcopy \
+            STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE=aarch64-linux-gnu- \
