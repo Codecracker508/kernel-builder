@@ -17,19 +17,15 @@ jobs:
           sudo apt install -y \
             git curl wget zip unzip bc bison flex \
             libssl-dev libelf-dev libncurses-dev \
-            build-essential python3 cpio kmod zstd
+            build-essential python3 cpio kmod
 
       - name: Clone Kernel
         run: |
           git clone --depth=1 https://github.com/AxionAOSP-devices/android_kernel_realme_sm8250.git kernel
 
-      - name: Download Neutron Clang
+      - name: Clone Proton Clang
         run: |
-          mkdir clang
-          cd clang
-          wget https://github.com/Neutron-Toolchains/clang-build-catalogue/releases/download/11032024/neutron-clang-17.0.0.tar.zst
-          tar --use-compress-program=unzstd -xvf neutron-clang-17.0.0.tar.zst
-          rm *.tar.zst
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
       - name: Clone AnyKernel3
         run: |
@@ -42,6 +38,11 @@ jobs:
           echo "KBUILD_BUILD_USER=CI" >> $GITHUB_ENV
           echo "KBUILD_BUILD_HOST=GitHub" >> $GITHUB_ENV
           echo "PATH=$PWD/clang/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Verify Clang
+        run: |
+          which clang
+          clang --version
 
       - name: Debug Kernel Tree
         run: |
@@ -68,11 +69,6 @@ jobs:
             ARCH=arm64 \
             CC=clang \
             LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJDUMP=llvm-objdump \
-            OBJCOPY=llvm-objcopy \
-            STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE=aarch64-linux-gnu- \
