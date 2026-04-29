@@ -33,15 +33,13 @@ jobs:
           echo "SUBARCH=arm64" >> $GITHUB_ENV
           echo "KBUILD_BUILD_USER=CI" >> $GITHUB_ENV
           echo "KBUILD_BUILD_HOST=GitHub" >> $GITHUB_ENV
-
-          # Fix PATH properly
           echo "PATH=$PWD/clang/bin:$PWD/clang/bin/llvm:$PATH" >> $GITHUB_ENV
 
       - name: Verify Toolchain
         run: |
-          which clang || true
-          which ld.lld || true
-          clang --version || true
+          which clang
+          which ld.lld
+          clang --version
 
       - name: Clone AnyKernel3
         run: |
@@ -58,18 +56,30 @@ jobs:
         run: |
           mkdir -p kernel/out
 
+      - name: Fix Kernel Script Paths
+        run: |
+          cd kernel
+
+          if [ -f scripts/as-version.sh ]; then
+            sed -i 's#../scripts/min-tool-version.sh#scripts/min-tool-version.sh#g' scripts/as-version.sh
+          fi
+
+          if [ -f scripts/min-tool-version.sh ]; then
+            chmod +x scripts/min-tool-version.sh
+          else
+            echo "min-tool-version.sh missing"
+            exit 1
+          fi
+
       - name: Build Kernel
         run: |
           set -o pipefail
           cd kernel
 
-          # defconfig
           make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
 
-          # fix config deps
           make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
 
-          # build
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
@@ -82,6 +92,8 @@ jobs:
             STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             2>&1 | tee -a build.log
 
       - name: Verify Output
