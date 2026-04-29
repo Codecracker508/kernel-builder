@@ -68,24 +68,23 @@ jobs:
             arch/arm64/configs/vendor/oplus.config
 
           make olddefconfig
-
-          echo "=== APPLY FIXES ==="
-
-          # camera disable
+          
+          # disable configs
           scripts/config --file .config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
           scripts/config --file .config --disable CONFIG_OPLUS_CAMERA || true
-
-          # clk debug disable
           scripts/config --file .config --disable CONFIG_DEBUG_CLK || true
           scripts/config --file .config --disable CONFIG_COMMON_CLK_DEBUG || true
-
+          
           make olddefconfig
-
-          # hard remove camera tree
+          
+          # 🔥 remove broken modules
           sed -i 's|techpack/camera-oplus|# techpack/camera-oplus|g' Makefile || true
           sed -i 's|techpack/camera-oplus|# techpack/camera-oplus|g' Kbuild || true
-
-          echo "=== BUILD START ==="
+          
+          sed -i 's|techpack/display|# techpack/display|g' Makefile || true
+          sed -i 's|techpack/display|# techpack/display|g' Kbuild || true
+          
+          # build starts here
           make -j$(nproc --all) 2>&1 | tee build.log
 
           if [ ! -f "out/arch/arm64/boot/Image" ]; then
