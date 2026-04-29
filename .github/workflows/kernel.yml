@@ -70,7 +70,7 @@ jobs:
             chmod +x scripts/min-tool-version.sh
           fi
 
-      - name: Build Kernel (Force Correct Clang)
+      - name: Build Kernel (Correct Defconfig)
         run: |
           set -o pipefail
           cd kernel
@@ -80,10 +80,16 @@ jobs:
           echo "Using clang from: $CLANG"
           $CLANG/clang --version
 
-          make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
+          # ✅ Use correct vendor defconfig
+          make O=out ARCH=arm64 vendor/kona-perf_defconfig 2>&1 | tee build.log
 
+          # ✅ Merge vendor fragment (important)
+          cat arch/arm64/configs/vendor/oplus.config >> out/.config
+
+          # ✅ Resolve dependencies
           make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
 
+          # ✅ Build
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
