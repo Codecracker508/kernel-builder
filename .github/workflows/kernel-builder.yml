@@ -18,7 +18,7 @@ jobs:
           build-essential bc bison flex \
           libssl-dev libelf-dev \
           git zip wget cpio python3 \
-          lld
+          llvm lld
 
     - name: Show branch
       run: |
@@ -44,13 +44,20 @@ jobs:
       run: |
         cd kernel
 
-        export PATH="$HOME/tc/bin:$PATH"
+        # combine clang + system llvm tools
+        export PATH="$HOME/tc/bin:/usr/lib/llvm-14/bin:$PATH"
 
         export ARCH=arm64
         export O=out
 
         export CC=clang
         export LD=ld.lld
+        export AR=llvm-ar
+        export NM=llvm-nm
+        export OBJCOPY=llvm-objcopy
+        export OBJDUMP=llvm-objdump
+        export STRIP=llvm-strip
+
         export LLVM=1
         export LLVM_IAS=1
 
@@ -59,7 +66,7 @@ jobs:
 
         rm -rf out
 
-        echo "Building with kona-perf + oplus config"
+        echo "Building with vendor/kona-perf + oplus config"
 
         make vendor/kona-perf_defconfig
 
@@ -93,16 +100,9 @@ jobs:
       run: |
         mkdir artifacts
 
-        # zip
         cp anykernel/*.zip artifacts/
-
-        # raw kernel
         cp kernel/out/arch/arm64/boot/Image artifacts/
-
-        # dtbo (if exists)
         cp kernel/out/arch/arm64/boot/dtbo.img artifacts/ || true
-
-        # dtb (optional)
         cp kernel/out/arch/arm64/boot/dtb artifacts/ || true
 
     - name: Upload artifacts
