@@ -1,108 +1,83 @@
 name: Kernel Builder for Realme GT Neo 3T
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    
+
     steps:
-    - name: Maximize build space
-      run: |
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /opt/ghc
-        sudo rm -rf "/usr/local/share/boost"
-        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-        df -h
-    
-    - name: Setup build environment
+    - name: Setup environment
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          build-essential \
-          bc \
-          bison \
-          flex \
-          libssl-dev \
-          libelf-dev \
-          git \
-          zip \
-          wget \
-          cpio \
-          python3
-    
-    - name: Cache toolchain
-      id: cache-toolchain
-      uses: actions/cache@v4
-      with:
-        path: ~/tc
-        key: clang-r547379
-    
-    - name: Download toolchain
-      if: steps.cache-toolchain.outputs.cache-hit != 'true'
+          build-essential bc bison flex \
+          libssl-dev libelf-dev \
+          git zip wget cpio python3
+
+    - name: Clone Clang 20
       run: |
-        git clone --depth 1 https://gitlab.com/alphadroid-project/prebuilts_clang_host_linux-x86_clang-r547379.git $HOME/tc
-    
-    - name: Clone kernel source
+        git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
+
+    - name: Clone Kernel Source
       run: |
-        git clone --depth 1 https://github.com/bijoyv9/android_kernel_realme_sm8250 kernel
-        cd kernel
-        
-        echo "Available defconfigs:"
-        find arch/arm64/configs -type f -name "*defconfig"
-    
-    - name: Build kernel
+        git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
+
+    - name: Build Kernel
       run: |
         cd kernel
-        
+
         export PATH="$HOME/tc/bin:$PATH"
-        
+
+        export ARCH=arm64
+        export O=out
+        export CC=clang
+        export LLVM=1
+        export LLVM_IAS=1
+
         export KBUILD_BUILD_USER="suresh"
         export KBUILD_BUILD_HOST="github"
-        
-        MAKE_ARGS="ARCH=arm64 O=out CC=clang LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi-"
-        
-        rm -rf out error.log
-        
-        # 👇 CHANGE THIS IF NEEDED AFTER FIRST RUN
-        DEFCONFIG=$(ls arch/arm64/configs | grep -i spartan | head -n 1)
-        
-        echo "Using defconfig: $DEFCONFIG"
-        
-        make $MAKE_ARGS $DEFCONFIG
-        make $MAKE_ARGS -j$(nproc --all) 2> >(tee -a error.log >&2)
-        
+
+        rm -rf out
+
+        echo "Building with kona-perf + oplus config"
+
+        # base config
+        make kona-perf_defconfig
+
+        # merge oplus config (important)
+        scripts/kconfig/merge_config.sh \
+          -m arch/arm64/configs/kona-perf_defconfig \
+          arch/arm64/configs/vendor/oplus.config
+
+        make olddefconfig
+
+        # build
+        make -j$(nproc --all) 2> >(tee build.log >&2)
+
         if [ ! -f "out/arch/arm64/boot/Image" ]; then
-          echo "Build failed"
-          cat error.log
+          echo "❌ Build failed"
+          cat build.log
           exit 1
         fi
-        
-        echo "Cloning AnyKernel3..."
+
+    - name: Clone AnyKernel3 (spartan)
+      run: |
         git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
-        
+
+    - name: Pack Kernel (safe method)
+      run: |
         mkdir -p anykernel/kernels
-        cp out/arch/arm64/boot/Image anykernel/kernels/
-        cp out/arch/arm64/boot/dtb anykernel/kernels/ || true
-        cp out/arch/arm64/boot/dtbo.img anykernel/kernels/ || true
-        
+
+        # ONLY copy Image → avoid dtb mismatch issues
+        cp kernel/out/arch/arm64/boot/Image anykernel/kernels/
+
         cd anykernel
-        ZIP_NAME=Kernel_spartan_$(date +%s).zip
-        zip -r9 $ZIP_NAME ./* -x .git .gitignore
-        mv $ZIP_NAME ../
-    
-    - name: Upload kernel zip
+        zip -r9 Kernel_spartan.zip ./* -x .git .gitignore
+
+    - name: Upload Kernel ZIP
       uses: actions/upload-artifact@v4
       with:
-        name: Kernel
-        path: kernel/*.zip
-    
-    - name: Upload dtbo
-      uses: actions/upload-artifact@v4
-      with:
-        name: dtbo
-        path: kernel/out/arch/arm64/boot/dtbo.img
+        name: Kernel-spartan
+        path: anykernel/*.zip
