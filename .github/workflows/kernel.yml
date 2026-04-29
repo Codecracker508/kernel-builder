@@ -1,4 +1,4 @@
-name: Build Realme GT Neo 3T Kernel (Non-KSU)
+name: Build Realme SM8250 Kernel (Non-KSU)
 
 on:
   push:
@@ -20,9 +20,9 @@ jobs:
           sudo apt install -y \
             git curl wget zip unzip bc bison flex \
             libssl-dev libelf-dev build-essential \
-            python3 cpio kmod
+            python3 cpio kmod rsync
 
-      - name: Clone Clang 20
+      - name: Clone Clang
         run: |
           git clone --depth=1 https://gitlab.com/provasishh/clang-20.git clang
 
@@ -38,21 +38,28 @@ jobs:
           echo "KBUILD_BUILD_HOST=GitHub" >> $GITHUB_ENV
           echo "PATH=$PWD/clang/bin:$PATH" >> $GITHUB_ENV
 
-      - name: Clean Output
+      - name: Prepare Out Directory
         run: |
           rm -rf out
           mkdir -p out
 
-      - name: Debug Defconfig (sanity check)
-        run: |
-          ls arch/arm64/configs/vendor/ || true
-
-      - name: Build Kernel (Non-KSU)
+      - name: Build Kernel (kona + oplus config)
         run: |
           set -o pipefail
 
-          make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
+          # Base defconfig
+          make O=out ARCH=arm64 vendor/kona-perf_defconfig 2>&1 | tee build.log
 
+          # Merge vendor config (CRITICAL)
+          scripts/kconfig/merge_config.sh -m \
+            out/.config \
+            arch/arm64/configs/vendor/oplus.config \
+            2>&1 | tee -a build.log
+
+          # Ensure config is finalized
+          make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
+
+          # Compile
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
@@ -63,7 +70,7 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             2>&1 | tee -a build.log
 
-      - name: Verify Outputs
+      - name: Verify Output
         run: |
           ls -lah out/arch/arm64/boot/ || true
 
