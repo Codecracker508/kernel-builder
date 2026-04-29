@@ -14,19 +14,26 @@ jobs:
       - name: Setup environment
         run: |
           sudo apt-get update -y -o Acquire::Retries=3
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            build-essential bc bison flex libssl-dev libelf-dev \
-            git zip wget cpio python3 llvm lld
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git zip wget cpio python3 llvm lld
 
       - name: Show branch
-        run: echo "Building branch: ${GITHUB_REF_NAME}"
+        run: |
+          echo "Building branch: ${GITHUB_REF_NAME}"
 
       - name: Clone Clang
-        run: git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
-
-      - name: Clone Kernel
         run: |
-          git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
+          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
+
+      - name: Clone Kernel Source (branch-aware)
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          if git ls-remote --heads https://github.com/SM8250-Common/android_kernel_realme_sm8250 "$BRANCH" | grep -q "$BRANCH"; then
+            echo "Using branch $BRANCH"
+            git clone --depth=1 -b "$BRANCH" https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
+          else
+            echo "Branch not found, using default"
+            git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
+          fi
 
       - name: Build Kernel
         run: |
@@ -48,6 +55,9 @@ jobs:
           export LLVM=1
           export LLVM_IAS=1
 
+          export KBUILD_BUILD_USER="suresh"
+          export KBUILD_BUILD_HOST="github"
+
           rm -rf out
 
           echo "=== CONFIG ==="
@@ -61,41 +71,45 @@ jobs:
 
           echo "=== APPLY FIXES ==="
 
-          # camera fix
+          # camera disable
           scripts/config --file .config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
           scripts/config --file .config --disable CONFIG_OPLUS_CAMERA || true
 
-          # clk debug fix
+          # clk debug disable
           scripts/config --file .config --disable CONFIG_DEBUG_CLK || true
           scripts/config --file .config --disable CONFIG_COMMON_CLK_DEBUG || true
 
           make olddefconfig
 
-          # hard remove camera tree (final guarantee)
-          sed -i 's/techpack\/camera-oplus/# techpack\/camera-oplus/g' Makefile || true
-          sed -i 's/techpack\/camera-oplus/# techpack\/camera-oplus/g' Kbuild || true
+          # hard remove camera tree
+          sed -i 's|techpack/camera-oplus|# techpack/camera-oplus|g' Makefile || true
+          sed -i 's|techpack/camera-oplus|# techpack/camera-oplus|g' Kbuild || true
 
           echo "=== BUILD START ==="
-
           make -j$(nproc --all) 2>&1 | tee build.log
 
-      - name: Extract Errors (copy this if build fails)
+          if [ ! -f "out/arch/arm64/boot/Image" ]; then
+            echo "Build failed"
+            exit 1
+          fi
+
+      - name: Show Errors (copy this)
         if: failure()
         run: |
-          echo "========= ERROR SUMMARY ========="
+          echo "===== ERROR SUMMARY ====="
           grep -i -E "error:|fatal error:|undefined reference|No such file" kernel/build.log || true
-          echo "================================="
+          echo "========================="
 
       - name: Clone AnyKernel3
         if: success()
-        run: git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
+        run: |
+          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
 
       - name: Pack Kernel ZIP
         if: success()
         run: |
           mkdir -p anykernel/kernels
           cp kernel/out/arch/arm64/boot/Image anykernel/kernels/
-
           cd anykernel
           zip -r9 Kernel_spartan.zip ./* -x .git .gitignore
 
