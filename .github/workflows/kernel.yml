@@ -23,31 +23,29 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/AxionAOSP-devices/android_kernel_realme_sm8250.git kernel
 
-      - name: Clone LineageOS Clang
+      - name: Clone Clang-20
         run: |
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86 clang
+          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git clang
 
-          # pick latest available clang
-          CLANG_VERSION=$(ls clang | grep clang-r | sort -V | tail -n1)
-
-          echo "Using $CLANG_VERSION"
-          echo "PATH=$PWD/clang/$CLANG_VERSION/bin:$PATH" >> $GITHUB_ENV
-
-      - name: Verify Clang
-        run: |
-          which clang
-          clang --version
-
-      - name: Clone AnyKernel3
-        run: |
-          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 AnyKernel3
-
-      - name: Set Environment
+      - name: Setup Toolchain Environment
         run: |
           echo "ARCH=arm64" >> $GITHUB_ENV
           echo "SUBARCH=arm64" >> $GITHUB_ENV
           echo "KBUILD_BUILD_USER=CI" >> $GITHUB_ENV
           echo "KBUILD_BUILD_HOST=GitHub" >> $GITHUB_ENV
+
+          # Fix PATH properly
+          echo "PATH=$PWD/clang/bin:$PWD/clang/bin/llvm:$PATH" >> $GITHUB_ENV
+
+      - name: Verify Toolchain
+        run: |
+          which clang || true
+          which ld.lld || true
+          clang --version || true
+
+      - name: Clone AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 AnyKernel3
 
       - name: Debug Kernel Tree
         run: |
@@ -65,10 +63,13 @@ jobs:
           set -o pipefail
           cd kernel
 
+          # defconfig
           make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
 
+          # fix config deps
           make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
 
+          # build
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
@@ -81,8 +82,6 @@ jobs:
             STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             2>&1 | tee -a build.log
 
       - name: Verify Output
