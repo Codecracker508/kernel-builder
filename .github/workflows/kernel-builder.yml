@@ -78,10 +78,14 @@ jobs:
 
           make olddefconfig
 
-          # force disable broken camera
+          # disable broken camera
           scripts/config --file .config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
           scripts/config --file .config --disable CONFIG_OPLUS_CAMERA || true
-
+          
+          # disable broken clk debug (THIS FIX)
+          scripts/config --file .config --disable CONFIG_DEBUG_CLK || true
+          scripts/config --file .config --disable CONFIG_COMMON_CLK_DEBUG || true
+          
           make olddefconfig
 
           make -j$(nproc --all) 2> >(tee build.log >&2)
