@@ -63,28 +63,32 @@ jobs:
           rm -rf $KERNEL_DIR/out
           mkdir -p $KERNEL_DIR/out
 
-      - name: Build Kernel (Correct Way)
+      - name: Build Kernel
         run: |
           set -o pipefail
           cd $KERNEL_DIR
 
-          # base defconfig (NO vendor/ prefix)
-          make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
+          chmod +x scripts/kconfig/merge_config.sh
 
-          # merge oplus config (required for your tree)
+          # Base config
+          make O=out ARCH=arm64 defconfig 2>&1 | tee build.log
+
+          # Proper merge
           scripts/kconfig/merge_config.sh -m \
             out/.config \
+            arch/arm64/configs/vendor/kona-perf_defconfig \
             arch/arm64/configs/vendor/oplus.config \
             2>&1 | tee -a build.log
 
-          # finalize config
+          # Finalize config
           make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
 
-          # build
+          # Build
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
             CC=clang \
+            LD=ld.lld \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE=aarch64-linux-gnu- \
