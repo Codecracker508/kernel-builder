@@ -14,26 +14,22 @@ jobs:
       - name: Setup environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential bc bison flex \
-            libssl-dev libelf-dev \
-            git zip wget cpio python3 \
-            llvm lld
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git zip wget cpio python3 llvm lld
 
       - name: Show branch
-        run: echo "Building branch: $GITHUB_REF_NAME"
+        run: |
+          echo "Building branch: ${GITHUB_REF_NAME}"
 
       - name: Clone Clang 20
-        run: git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
-
-      - name: Clone Kernel Source (safe)
-        shell: bash
         run: |
-          set -e
-          BRANCH="$GITHUB_REF_NAME"
+          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
+
+      - name: Clone Kernel Source (branch-aware)
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
 
           if git ls-remote --heads https://github.com/SM8250-Common/android_kernel_realme_sm8250 "$BRANCH" | grep -q "$BRANCH"; then
-            echo "Cloning branch $BRANCH"
+            echo "Cloning matching branch: $BRANCH"
             git clone --depth=1 -b "$BRANCH" https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
           else
             echo "Branch not found, using default"
@@ -41,9 +37,7 @@ jobs:
           fi
 
       - name: Build Kernel
-        shell: bash
         run: |
-          set -e
           cd kernel
 
           export PATH="$HOME/tc/bin:$(llvm-config --bindir):$PATH"
@@ -67,6 +61,8 @@ jobs:
 
           rm -rf out
 
+          echo "Building with vendor/kona-perf + oplus config"
+
           make vendor/kona-perf_defconfig
 
           printf "%s\n" \
@@ -80,10 +76,17 @@ jobs:
             disable_camera.config
 
           make olddefconfig
-          make -j$(nproc --all)
+          make -j$(nproc --all) 2> >(tee build.log >&2)
+
+          if [ ! -f "out/arch/arm64/boot/Image" ]; then
+            echo "Build failed"
+            cat build.log
+            exit 1
+          fi
 
       - name: Clone AnyKernel3
-        run: git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
+        run: |
+          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
 
       - name: Pack Kernel ZIP
         run: |
