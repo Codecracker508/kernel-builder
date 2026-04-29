@@ -68,19 +68,16 @@ jobs:
           set -o pipefail
           cd $KERNEL_DIR
 
-          chmod +x scripts/kconfig/merge_config.sh
+          mkdir -p out
 
-          # Base config
+          # Start fresh config
           make O=out ARCH=arm64 defconfig 2>&1 | tee build.log
 
-          # Proper merge
-          scripts/kconfig/merge_config.sh -m \
-            out/.config \
-            arch/arm64/configs/vendor/kona-perf_defconfig \
-            arch/arm64/configs/vendor/oplus.config \
-            2>&1 | tee -a build.log
+          # Merge configs safely
+          cat arch/arm64/configs/vendor/kona-perf_defconfig >> out/.config
+          cat arch/arm64/configs/vendor/oplus.config >> out/.config
 
-          # Finalize config
+          # Fix dependencies
           make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
 
           # Build
