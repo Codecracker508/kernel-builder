@@ -24,7 +24,7 @@ jobs:
         run: |
           git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
 
-      - name: Clone Kernel Source (branch-aware)
+      - name: Clone Kernel Source
         run: |
           BRANCH="${GITHUB_REF_NAME}"
 
@@ -65,17 +65,19 @@ jobs:
 
           make vendor/kona-perf_defconfig
 
-          printf "%s\n" \
-          "# CONFIG_SPECTRA_CAMERA_OPLUS is not set" \
-          "# CONFIG_OPLUS_CAMERA is not set" \
-          > disable_camera.config
-
+          # merge configs
           scripts/kconfig/merge_config.sh \
             -m arch/arm64/configs/vendor/kona-perf_defconfig \
-            arch/arm64/configs/vendor/oplus.config \
-            disable_camera.config
+            arch/arm64/configs/vendor/oplus.config
 
           make olddefconfig
+
+          # 🔥 FORCE disable broken camera (THIS FIXES YOUR ERROR)
+          scripts/config --file .config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
+          scripts/config --file .config --disable CONFIG_OPLUS_CAMERA || true
+
+          make olddefconfig
+
           make -j$(nproc --all) 2> >(tee build.log >&2)
 
           if [ ! -f "out/arch/arm64/boot/Image" ]; then
