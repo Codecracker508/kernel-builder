@@ -27,23 +27,27 @@ jobs:
         run: |
           git clone --depth=1 https://gitlab.com/provasishh/clang-20.git clang
 
-      - name: Setup Toolchain Environment
+      - name: Verify Clang Layout
+        run: |
+          echo "Checking clang structure..."
+          ls clang
+          ls clang/bin || true
+
+          if [ ! -f clang/bin/clang ]; then
+            echo "clang binary missing!"
+            exit 1
+          fi
+
+      - name: Clone AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 AnyKernel3
+
+      - name: Setup Environment
         run: |
           echo "ARCH=arm64" >> $GITHUB_ENV
           echo "SUBARCH=arm64" >> $GITHUB_ENV
           echo "KBUILD_BUILD_USER=CI" >> $GITHUB_ENV
           echo "KBUILD_BUILD_HOST=GitHub" >> $GITHUB_ENV
-          echo "PATH=$PWD/clang/bin:$PWD/clang/bin/llvm:$PATH" >> $GITHUB_ENV
-
-      - name: Verify Toolchain
-        run: |
-          which clang
-          which ld.lld
-          clang --version
-
-      - name: Clone AnyKernel3
-        run: |
-          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 AnyKernel3
 
       - name: Debug Kernel Tree
         run: |
@@ -71,10 +75,14 @@ jobs:
             exit 1
           fi
 
-      - name: Build Kernel
+      - name: Build Kernel (Force Clang-20)
         run: |
           set -o pipefail
           cd kernel
+
+          CLANG=$PWD/../clang/bin
+
+          $CLANG/clang --version
 
           make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
 
@@ -83,13 +91,13 @@ jobs:
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
-            CC=clang \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
+            CC=$CLANG/clang \
+            LD=$CLANG/ld.lld \
+            AR=$CLANG/llvm-ar \
+            NM=$CLANG/llvm-nm \
+            OBJCOPY=$CLANG/llvm-objcopy \
+            OBJDUMP=$CLANG/llvm-objdump \
+            STRIP=$CLANG/llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE=aarch64-linux-gnu- \
