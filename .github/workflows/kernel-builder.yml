@@ -11,108 +11,107 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Setup environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential bc bison flex \
-          libssl-dev libelf-dev \
-          git zip wget cpio python3 \
-          llvm lld
+      - name: Setup environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential bc bison flex \
+            libssl-dev libelf-dev \
+            git zip wget cpio python3 \
+            llvm lld
 
-    - name: Show branch
-      run: echo "Building branch: $GITHUB_REF_NAME"
+      - name: Show branch
+        run: echo "Building branch: $GITHUB_REF_NAME"
 
-    - name: Clone Clang 20
-      run: |
-        git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
+      - name: Clone Clang 20
+        run: |
+          git clone --depth=1 https://gitlab.com/provasishh/clang-20.git $HOME/tc
 
-    - name: Clone Kernel Source (same branch if exists)
-      run: |
-        BRANCH=$GITHUB_REF_NAME
+      - name: Clone Kernel Source (same branch if exists)
+        run: |
+          BRANCH=$GITHUB_REF_NAME
 
-        if git ls-remote --heads https://github.com/SM8250-Common/android_kernel_realme_sm8250 $BRANCH | grep $BRANCH; then
-          echo "Cloning branch $BRANCH"
-          git clone --depth=1 -b $BRANCH https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
-        else
-          echo "Branch not found, using default"
-          git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
-        fi
+          if git ls-remote --heads https://github.com/SM8250-Common/android_kernel_realme_sm8250 $BRANCH | grep $BRANCH; then
+            echo "Cloning branch $BRANCH"
+            git clone --depth=1 -b $BRANCH https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
+          else
+            echo "Branch not found, using default"
+            git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
+          fi
 
-    - name: Build Kernel
-      run: |
-        cd kernel
+      - name: Build Kernel
+        run: |
+          cd kernel
 
-        # combine clang + system llvm tools
-        export PATH="$HOME/tc/bin:/usr/lib/llvm-14/bin:$PATH"
+          export PATH="$HOME/tc/bin:$(llvm-config --bindir):$PATH"
 
-        export ARCH=arm64
-        export O=out
+          export ARCH=arm64
+          export O=out
 
-        export CC=clang
-        export LD=ld.lld
-        export AR=llvm-ar
-        export NM=llvm-nm
-        export OBJCOPY=llvm-objcopy
-        export OBJDUMP=llvm-objdump
-        export STRIP=llvm-strip
+          export CC=clang
+          export LD=ld.lld
+          export AR=llvm-ar
+          export NM=llvm-nm
+          export OBJCOPY=llvm-objcopy
+          export OBJDUMP=llvm-objdump
+          export STRIP=llvm-strip
 
-        export LLVM=1
-        export LLVM_IAS=1
+          export LLVM=1
+          export LLVM_IAS=1
 
-        export KBUILD_BUILD_USER="suresh"
-        export KBUILD_BUILD_HOST="github"
+          export KBUILD_BUILD_USER="suresh"
+          export KBUILD_BUILD_HOST="github"
 
-        rm -rf out
+          rm -rf out
 
-        echo "Building with vendor/kona-perf + oplus config"
+          echo "Building with vendor/kona-perf + oplus config"
 
-        make vendor/kona-perf_defconfig
+          make vendor/kona-perf_defconfig
 
-        # 🔥 disable broken camera cleanly
-        cat <<EOF > disable_camera.config
-        # CONFIG_SPECTRA_CAMERA_OPLUS is not set
-        # CONFIG_OPLUS_CAMERA is not set
-        EOF
+          # disable broken camera cleanly
+          printf "%s\n" \
+          "# CONFIG_SPECTRA_CAMERA_OPLUS is not set" \
+          "# CONFIG_OPLUS_CAMERA is not set" \
+          > disable_camera.config
 
-        scripts/kconfig/merge_config.sh \
-          -m arch/arm64/configs/vendor/kona-perf_defconfig \
-          arch/arm64/configs/vendor/oplus.config \
-          disable_camera.config
+          scripts/kconfig/merge_config.sh \
+            -m arch/arm64/configs/vendor/kona-perf_defconfig \
+            arch/arm64/configs/vendor/oplus.config \
+            disable_camera.config
 
-        make olddefconfig
+          make olddefconfig
 
-        make -j$(nproc --all) 2> >(tee build.log >&2)
+          make -j$(nproc --all) 2> >(tee build.log >&2)
 
-        if [ ! -f "out/arch/arm64/boot/Image" ]; then
-          echo "❌ Build failed"
-          cat build.log
-          exit 1
-        fi
+          if [ ! -f "out/arch/arm64/boot/Image" ]; then
+            echo "Build failed"
+            cat build.log
+            exit 1
+          fi
 
-    - name: Clone AnyKernel3
-      run: |
-        git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
+      - name: Clone AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 anykernel
 
-    - name: Pack Kernel ZIP
-      run: |
-        mkdir -p anykernel/kernels
-        cp kernel/out/arch/arm64/boot/Image anykernel/kernels/
+      - name: Pack Kernel ZIP
+        run: |
+          mkdir -p anykernel/kernels
+          cp kernel/out/arch/arm64/boot/Image anykernel/kernels/
 
-        cd anykernel
-        zip -r9 Kernel_spartan.zip ./* -x .git .gitignore
+          cd anykernel
+          zip -r9 Kernel_spartan.zip ./* -x .git .gitignore
 
-    - name: Prepare artifacts
-      run: |
-        mkdir artifacts
+      - name: Prepare artifacts
+        run: |
+          mkdir artifacts
 
-        cp anykernel/*.zip artifacts/
-        cp kernel/out/arch/arm64/boot/Image artifacts/
-        cp kernel/out/arch/arm64/boot/dtbo.img artifacts/ || true
-        cp kernel/out/arch/arm64/boot/dtb artifacts/ || true
+          cp anykernel/*.zip artifacts/
+          cp kernel/out/arch/arm64/boot/Image artifacts/
+          cp kernel/out/arch/arm64/boot/dtbo.img artifacts/ || true
+          cp kernel/out/arch/arm64/boot/dtb artifacts/ || true
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: Kernel-${{ github.ref_name }}
-        path: artifacts/*
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-${{ github.ref_name }}
+          path: artifacts/*
