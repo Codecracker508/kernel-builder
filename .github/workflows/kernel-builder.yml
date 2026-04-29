@@ -75,7 +75,11 @@ jobs:
           arch/arm64/configs/vendor/oplus.config
 
         make olddefconfig
-
+        
+        # disable broken camera
+        scripts/config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
+        scripts/config --disable CONFIG_OPLUS_CAMERA || true
+        
         make -j$(nproc --all) 2> >(tee build.log >&2)
 
         if [ ! -f "out/arch/arm64/boot/Image" ]; then
