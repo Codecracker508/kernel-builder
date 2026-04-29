@@ -11,10 +11,19 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Setup environment
+      - name: Setup environment (fast + non-blocking)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git zip wget cpio python3 llvm lld
+          sudo sed -i 's|http://archive.ubuntu.com|http://mirror.math.princeton.edu/pub/ubuntu|g' /etc/apt/sources.list
+
+          sudo apt-get update -y -o Acquire::Retries=3
+
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential bc bison flex \
+            libssl-dev libelf-dev \
+            git zip wget cpio python3 \
+            llvm lld
+
+          echo "Setup done"
 
       - name: Show branch
         run: |
@@ -61,18 +70,15 @@ jobs:
 
           rm -rf out
 
-          echo "Building with vendor/kona-perf + oplus config"
-
           make vendor/kona-perf_defconfig
 
-          # merge configs
           scripts/kconfig/merge_config.sh \
             -m arch/arm64/configs/vendor/kona-perf_defconfig \
             arch/arm64/configs/vendor/oplus.config
 
           make olddefconfig
 
-          # 🔥 FORCE disable broken camera (THIS FIXES YOUR ERROR)
+          # force disable broken camera
           scripts/config --file .config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
           scripts/config --file .config --disable CONFIG_OPLUS_CAMERA || true
 
