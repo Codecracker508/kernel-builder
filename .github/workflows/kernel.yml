@@ -23,9 +23,26 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/AxionAOSP-devices/android_kernel_realme_sm8250.git kernel
 
-      - name: Clone Proton Clang
+      - name: Clone AOSP Clang
         run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang
+
+          # pick known working version
+          CLANG_VERSION=clang-r487747
+
+          if [ ! -d "clang/$CLANG_VERSION" ]; then
+            echo "clang version not found!"
+            ls clang
+            exit 1
+          fi
+
+          echo "Using $CLANG_VERSION"
+          echo "PATH=$PWD/clang/$CLANG_VERSION/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Verify Clang
+        run: |
+          which clang
+          clang --version
 
       - name: Clone AnyKernel3
         run: |
@@ -37,12 +54,6 @@ jobs:
           echo "SUBARCH=arm64" >> $GITHUB_ENV
           echo "KBUILD_BUILD_USER=CI" >> $GITHUB_ENV
           echo "KBUILD_BUILD_HOST=GitHub" >> $GITHUB_ENV
-          echo "PATH=$PWD/clang/bin:$PATH" >> $GITHUB_ENV
-
-      - name: Verify Clang
-        run: |
-          which clang
-          clang --version
 
       - name: Debug Kernel Tree
         run: |
@@ -69,6 +80,11 @@ jobs:
             ARCH=arm64 \
             CC=clang \
             LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
             CROSS_COMPILE=aarch64-linux-gnu- \
