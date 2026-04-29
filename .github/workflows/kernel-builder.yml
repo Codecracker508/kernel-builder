@@ -78,11 +78,17 @@ jobs:
 
           make olddefconfig
 
-          # disable broken camera
+          # disable camera via config
           scripts/config --file .config --disable CONFIG_SPECTRA_CAMERA_OPLUS || true
           scripts/config --file .config --disable CONFIG_OPLUS_CAMERA || true
           
-          # disable broken clk debug (THIS FIX)
+          make olddefconfig
+          
+          # 🔥 HARD remove broken camera tree
+          sed -i 's/techpack\/camera-oplus/# techpack\/camera-oplus/g' Makefile || true
+          sed -i 's/techpack\/camera-oplus/# techpack\/camera-oplus/g' Kbuild || true
+          
+          # also keep clk fix
           scripts/config --file .config --disable CONFIG_DEBUG_CLK || true
           scripts/config --file .config --disable CONFIG_COMMON_CLK_DEBUG || true
           
