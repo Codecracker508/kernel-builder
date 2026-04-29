@@ -23,18 +23,12 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/AxionAOSP-devices/android_kernel_realme_sm8250.git kernel
 
-      - name: Clone AOSP Clang
+      - name: Clone LineageOS Clang
         run: |
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86 clang
 
-          # pick known working version
-          CLANG_VERSION=clang-r487747
-
-          if [ ! -d "clang/$CLANG_VERSION" ]; then
-            echo "clang version not found!"
-            ls clang
-            exit 1
-          fi
+          # pick latest available clang
+          CLANG_VERSION=$(ls clang | grep clang-r | sort -V | tail -n1)
 
           echo "Using $CLANG_VERSION"
           echo "PATH=$PWD/clang/$CLANG_VERSION/bin:$PATH" >> $GITHUB_ENV
