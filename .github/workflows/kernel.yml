@@ -43,23 +43,19 @@ jobs:
           rm -rf out
           mkdir -p out
 
-      - name: Build Kernel (kona + oplus config)
+      - name: Build Kernel
         run: |
           set -o pipefail
 
-          # Base defconfig
-          make O=out ARCH=arm64 vendor/kona-perf_defconfig 2>&1 | tee build.log
+          make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
 
-          # Merge vendor config (CRITICAL)
           scripts/kconfig/merge_config.sh -m \
             out/.config \
             arch/arm64/configs/vendor/oplus.config \
             2>&1 | tee -a build.log
 
-          # Ensure config is finalized
           make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
 
-          # Compile
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
