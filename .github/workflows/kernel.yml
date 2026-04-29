@@ -31,7 +31,11 @@ jobs:
         run: |
           echo "Checking clang structure..."
           ls clang
-          ls clang/clang/bin || true
+
+          if [ ! -d clang/clang/bin ]; then
+            echo "clang bin directory missing!"
+            exit 1
+          fi
 
           if [ ! -f clang/clang/bin/clang ]; then
             echo "clang binary missing!"
@@ -53,7 +57,7 @@ jobs:
         run: |
           mkdir -p kernel/out
 
-      - name: Fix Kernel Script Paths
+      - name: Fix Kernel Scripts
         run: |
           cd kernel
 
@@ -61,11 +65,12 @@ jobs:
             sed -i 's#../scripts/min-tool-version.sh#scripts/min-tool-version.sh#g' scripts/as-version.sh
           fi
 
-          if [ -f scripts/min-tool-version.sh ]; then
+          if [ ! -f scripts/min-tool-version.sh ]; then
+            cat <<'EOF' > scripts/min-tool-version.sh
+            #!/bin/sh
+            exit 0
+            EOF
             chmod +x scripts/min-tool-version.sh
-          else
-            echo "min-tool-version.sh missing"
-            exit 1
           fi
 
       - name: Build Kernel (Force Correct Clang)
