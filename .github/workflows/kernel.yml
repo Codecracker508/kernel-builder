@@ -11,9 +11,6 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout Source
-        uses: actions/checkout@v4
-
       - name: Install Dependencies
         run: |
           sudo apt update
@@ -22,7 +19,11 @@ jobs:
             libssl-dev libelf-dev build-essential \
             python3 cpio kmod rsync
 
-      - name: Clone Clang
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 https://github.com/SM8250-Common/android_kernel_realme_sm8250 kernel
+
+      - name: Clone Clang Toolchain
         run: |
           git clone --depth=1 https://gitlab.com/provasishh/clang-20.git clang
 
@@ -30,7 +31,7 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/bijoyv9/AnyKernel3 AnyKernel3
 
-      - name: Export Env
+      - name: Export Environment
         run: |
           echo "ARCH=arm64" >> $GITHUB_ENV
           echo "SUBARCH=arm64" >> $GITHUB_ENV
@@ -38,49 +39,32 @@ jobs:
           echo "KBUILD_BUILD_HOST=GitHub" >> $GITHUB_ENV
           echo "PATH=$PWD/clang/bin:$PATH" >> $GITHUB_ENV
 
-      # 🔍 Detect correct kernel directory automatically
-      - name: Detect Kernel Directory
-        id: kdir
+      - name: Debug Kernel Tree
         run: |
-          if [ -d "kernel/realme/sm8250" ]; then
-            echo "KERNEL_DIR=kernel/realme/sm8250" >> $GITHUB_ENV
-          else
-            echo "KERNEL_DIR=." >> $GITHUB_ENV
-          fi
-
-          echo "Using kernel dir: $KERNEL_DIR"
-
-      # 🔍 Debug (so we never guess again)
-      - name: Debug Paths
-        run: |
-          cd $KERNEL_DIR
+          cd kernel
           pwd
           ls
-          ls arch/arm64/configs/vendor/ || true
+          ls arch/arm64/configs/vendor/
 
-      - name: Clean Output
+      - name: Prepare Output Directory
         run: |
-          rm -rf $KERNEL_DIR/out
-          mkdir -p $KERNEL_DIR/out
+          mkdir -p kernel/out
 
       - name: Build Kernel
         run: |
           set -o pipefail
-          cd $KERNEL_DIR
+          cd kernel
 
-          mkdir -p out
+          # Load base defconfig
+          make O=out ARCH=arm64 kona-perf_defconfig 2>&1 | tee build.log
 
-          # Start fresh config
-          make O=out ARCH=arm64 defconfig 2>&1 | tee build.log
-
-          # Merge configs safely
-          cat arch/arm64/configs/vendor/kona-perf_defconfig >> out/.config
+          # Merge vendor config
           cat arch/arm64/configs/vendor/oplus.config >> out/.config
 
-          # Fix dependencies
+          # Resolve config dependencies
           make O=out ARCH=arm64 olddefconfig 2>&1 | tee -a build.log
 
-          # Build
+          # Compile kernel
           make -j$(nproc --all) \
             O=out \
             ARCH=arm64 \
@@ -92,15 +76,15 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             2>&1 | tee -a build.log
 
-      - name: Verify Output
+      - name: Verify Outputs
         run: |
-          ls -lah $KERNEL_DIR/out/arch/arm64/boot/ || true
+          ls -lah kernel/out/arch/arm64/boot/ || true
 
       - name: Copy to AnyKernel3
         run: |
-          cp $KERNEL_DIR/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || true
-          cp $KERNEL_DIR/out/arch/arm64/boot/dtbo.img AnyKernel3/ 2>/dev/null || true
-          cp $KERNEL_DIR/out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
+          cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/ 2>/dev/null || true
+          cp kernel/out/arch/arm64/boot/dtbo.img AnyKernel3/ 2>/dev/null || true
+          cp kernel/out/arch/arm64/boot/Image AnyKernel3/ 2>/dev/null || true
 
       - name: Create Flashable Zip
         run: |
@@ -113,10 +97,10 @@ jobs:
         with:
           name: kernel-build
           path: |
-            ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image*
-            ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/dtbo.img
+            kernel/out/arch/arm64/boot/Image*
+            kernel/out/arch/arm64/boot/dtbo.img
+            kernel/build.log
             kernel.zip
-            ${{ env.KERNEL_DIR }}/build.log
 
       - name: Upload Boot Image (if exists)
         if: always()
@@ -124,4 +108,4 @@ jobs:
         with:
           name: boot-image
           path: |
-            ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/boot.img
+            kernel/out/arch/arm64/boot/boot.img
